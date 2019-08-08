@@ -1,29 +1,15 @@
+
+#=============================================================================#
+
+#Utility Functions for the VHR Segmentation project#
+#Barely functioning, and not well commented yet#
+#Proceed at your own risk#
+
+
 import os
-    
-#if 'GDAL_DATA' not in os.environ:
-#   os.environ['GDAL_DATA'] = r"C:\Anaconda\pkgs\libgdal-2.3.3-h10f50ba_0\Library\share\gdal"
-
-from osgeo import osr
-
 import rasterio as rio
-#from rasterio.plot import show
-import numpy as np
-import os
-#from PIL import Image
-#import math
-#from osgeo import gdal
-#from osgeo import ogr
-#from osgeo import gdalconst
-#from shapely.geometry import Polygon, mapping
-from rasterio.mask import mask
-#from osgeo import gdal
-#from osgeo import ogr
-#from osgeo import gdalconst
 from osgeo import osr, gdalconst, ogr, gdal
-#import os, sys
-#import ogr
 from math import floor
-import geopandas
 import json
 from shapely.geometry import Polygon, MultiPolygon
 from pathlib import Path
@@ -38,32 +24,35 @@ from matplotlib.collections import PatchCollection
 from tqdm import tqdm
 import geopandas
 import pandas
-import rasterio 
 from rasterio.mask import mask
 from rasterio.features import shapes
-from shapely.geometry import shape
-from matplotlib import pyplot as plt
-import SegUtils
+#from shapely.geometry import shape
 import numpy as np
-import shapely
-from shapely.geometry import Polygon
 import aerialImageRetrieval
+import SegUtils
 
-
-def download_quadrant_images_from_bing(bboxes,TempPath,DownloadedPath):
+def download_images_from_bing(bboxes,TempPath,DownloadedPath,verbose=True):
+#Function for SegUtils
+##Attempt to download images from the bing API at zoom level 18, or lower if 8 is not possible
+##Note: Higher zoom levels than 18 are possible, modify the class variable MAXLEVEL in tilesystem.py
+##to enable higher zoom levels
+    
     from tilesystem import TileSystem
     for i in range(0,len(bboxes)):
         quadrant=bboxes.iloc[i]
         dst_filename = DownloadedPath+quadrant.QUADRANT+'_bing_18.tif'
         new_image_file = Path(dst_filename)
         if not new_image_file.exists():
-            print("Downloading Image for Quadrant: ",quadrant.QUADRANT)
+            if verbose:
+                print("Downloading image for BBox: ",quadrant.QUADRANT)
             bbox=quadrant.geometry.bounds
             imgretrieval=aerialImageRetrieval.AerialImageRetrieval(bbox[1], bbox[0], bbox[3], bbox[2],TempPath)
             if imgretrieval.max_resolution_imagery_retrieval():
-                print("Successfully retrieved the image with maximum resolution!")
+                if verbose:
+                    print("Successfully retrieved the image with maximum resolution!")
             else:
-                print("Cannot retrieve the desired image! (Possible reason: expected tile image does not exist.)")
+                if verbose:
+                    print("Cannot retrieve the desired image! (Possible reason: expected tile image does not exist.)")
             #Get the file fromthe output folder (normally there should be only one)
             src_filename =TempPath+os.listdir(TempPath)[0]
             
@@ -96,7 +85,8 @@ def download_quadrant_images_from_bing(bboxes,TempPath,DownloadedPath):
             #delete the file from the output folder
             os.remove(src_filename)
         else:
-            print("Image already exists, skipping.")
+            if verbose:
+                print("Image already exists, skipping.")
 
 def split_coco(coco,train_partition):
     #Get image ids which are referenced in annotations
@@ -211,24 +201,24 @@ def coco_to_geometry(cocofile):
     
 
 
-def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,dst_ann,invert_y=False,category_field="Class"):
+def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,dst_ann,invert_y=False,category_field="Class",verbose=True):
+    #Function for SegUtils
     grid = geopandas.read_file(src_grid)#Open The Grid shp
     data = rio.open(src_im)# Open the raster tif
     ntiles=len(grid)
     
-    
-    print("==============================================")
-    print("Preprocessing Annotation Shapefile")
+    if verbose:
+        print("==============================================")
+        print("Preprocessing Annotation Shapefile")
     anno=geopandas.read_file(src_ann)
     anno=anno[anno["geometry"].notnull()]
     anno=anno.explode()
     anno['geometry'] = anno.geometry.buffer(0)   
     anno.to_file(driver = 'ESRI Shapefile', filename= dst_ann+"preprocessed_annotations.shp")
-    print("Done Preprocessing Annotation Shapefile")
-    print("==============================================")
-    ##ERSTELLE KATEGORIEN FÜR COCO FORMAT
-    
-    
+    if verbose:
+        print("Done Preprocessing Annotation Shapefile")
+        print("==============================================")
+    ##create categories for coco format
     coco_info ={}
     coco_licenses={}
     coco_images = []  #List of dict of {file_name,id, height,width}
@@ -237,27 +227,24 @@ def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,ds
     category_log=[] #list of classnames
     category_id_log=[]
     anno_id_log=[] #list of anno nids
-    im_id_log=[]#list of image ids
-    
-    
-    print("==============================================")
-    print("Starting to process image and annotation files")
-    for i in range(0,ntiles): #for every object in grid
+    im_id_log=[]#list of image ids    
+    if verbose:
+        print("==============================================")
+        print("Starting to process image and annotation files")
+    for i in tqdm(range(0,ntiles), desc="Processing Tiles" ): #for every object in grid
     #for i in range(0,100):
-        im_id=("{:05d}".format(prefix))+"0123"+("{:05d}".format(i))#Unique id: erste 5 ziffern=prefix, 0123 bedeutet dass es image ist, letzte 5 ziffern id
+        im_id=("{:05d}".format(prefix))+"0123"+("{:05d}".format(i))#Unique id: first 5 digits=prefix, 0123 = image ist, las 5 digits refer to id
         outfile_im=dst_im+im_id+".tif"
         outfile_ann=dst_ann+"Tile_%d_Annotation.shp" % i
         #anno_tilename = f'COCO_train2016_000000{100000+i}'
-        
-        print("Clipping tile" + str(i) + " of "+str(ntiles))
+        if verbose:
+            print("Clipping tile" + str(i) + " of "+str(ntiles))
         #print("Target: "+outfile_im)
         coords=getFeatures(grid,i) #get the polygon
         Tile, out_transform = mask(dataset=data, shapes=coords, crop=True) #crop the raster to the polygon
-        #Suche bei der gelegenheit die auflösung raus, die wir sehr viel später in dieser funktion brauchen um die annotations zu skalieren
         xres=abs(out_transform[0])
         yres=abs(out_transform[4])
         out_meta = data.meta.copy() #get a copy of the metadata of the raster
-        #out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform,"crs": '+proj=utm +zone=49 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'}) #update the meta for the cropped raster
         out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform}) #update the meta for the cropped raster
         #make the dir if necessary
         if not os.path.exists(dst_im):
@@ -265,34 +252,22 @@ def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,ds
         #write the image
         with rio.open(outfile_im, "w", **out_meta) as dest:
                 dest.write(Tile) 
-        
         #UPDATE COCO FOR THIS IMAGE
         Image_descr={"file_name":im_id+".tif","id":im_id,"height":out_meta["height"],"width":out_meta["width"]}
         coco_images.append(Image_descr)
-        im_id_log.append(im_id) #also register the image id in the log
-
-
-
-                                 
-        print("Clipping annotation" + str(i)+ "of "+str(ntiles) )
-        
-        
-        
-        
+        im_id_log.append(im_id) #also register the image id in the log                         
+        if verbose:
+            print("Clipping annotation" + str(i)+ "of "+str(ntiles) )
         #print("Target: "+outfile_ann)
         (xmin,ymin,xmax,ymax)=grid.bounds[i:i+1].iloc[0,:]
         subprocess.call("ogr2ogr -clipsrc %d %d %d %d "%(xmin,ymin,xmax,ymax) +'"'+ outfile_ann+'"'+" "+'"'+ dst_ann+"preprocessed_annotations.shp"+'"' ,shell=True)
-    
-    
-    
         #print("Processing Annotations")
         anno=geopandas.read_file(outfile_ann)
-        
-        
         #drop missing geometries
         anno=anno[anno["geometry"].notnull()]
         if anno.empty:
-            print("No Valid Annotations found, skipping Tile ", str(i))
+            if verbose:
+                print("No Valid Annotations found, skipping Tile ", str(i))
             continue
         #EXPLODE to remove multipart features
         anno=anno.explode()
@@ -303,38 +278,28 @@ def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,ds
         #drop small geometries   
         anno = anno[anno.geometry.area * (10 * 10) > 500] #enterne ganz kleine polys
         if anno.empty:
-            print("No Valid Annotations found, skipping Tile ", str(i))
+            if verbose:
+                print("No Valid Annotations found, skipping Tile ", str(i))
             continue        
         #anno.to_file(driver = 'ESRI Shapefile', filename= "result.shp")
         #print("Converting to Local Coordinates")
         #width=xmax-xmin
         height=ymax-ymin
         npoly=len(anno)
-        
-        
-        
         # ADD CLASSES FOR THIS ANNO TO COCO CLASS, IF THEY ARE NOT REGISTERED THERE YET
         anno_classes=anno[category_field]          #get classes in current anno   (in relevant category column)
         anno_classes_uniq= list(set(anno_classes))            #get uniques
         for k in anno_classes_uniq:     
             if k not in category_log:            #wenn es die category noch ned gibt
                 new_category_id=len(coco_categories)
-                print("creating new category: ", k, " under id: ", new_category_id)   
+                if verbose:
+                    print("creating new category: ", k, " under id: ", new_category_id)   
                 
                 Class_descr={"supercategory":"LandCover","id":new_category_id,"name":k}  #mach neu (ids start at 0)
                 coco_categories.append(Class_descr) #hänge an
-                category_log.append(k) # registriere die neue klasse namentlich im log
-                category_id_log.append(new_category_id)   #registriere die neue id im log
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        #For each poly in the clipped shape:
+                category_log.append(k) # registrier the new class in log
+                category_id_log.append(new_category_id)   #register the new class in log
+#For each poly in the clipped shape:
         for j in range(0,npoly):
 
             #UPDATE THE GEOMETRY
@@ -346,10 +311,7 @@ def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,ds
                 #Die coordinaten werden auf tile coordinaten transformiert(subtraktion), mittels der auflösung werden die meter in pixelwerte transformiert, die y axe gespiegelt
                 newpoly=shapely.geometry.Polygon([[(x - xmin)/xres, (height-(y - ymin))/yres] for x, y in zip(poly_x, poly_y)])         
             anno.geometry.iloc[j]=newpoly
-            
-            
-            
-            #ADD THE ANNOTATIONS TO COCO ANNOTATIONS
+#ADD THE ANNOTATIONS TO COCO ANNOTATIONS
             anno_id=("{:05d}".format(prefix))+"0987"+("{:05d}".format(len(anno_id_log)))#Unique id: erste 5 ziffern=prefix, 0987 bedeutet dass es anno ist, letzte 5 ziffern id
             image_id=im_id
             category_name=anno[category_field].values[j]  #find the category name
@@ -359,27 +321,15 @@ def grid_raster_and_annotations_to_coco(src_grid,src_im,src_ann,dst_im,prefix,ds
             bbox=newpoly.bounds
             area=newpoly.area
             iscrowd=0
-            
             Anno_descr={"id":anno_id,"category_id":category_id,"iscrowd":iscrowd,"segmentation":segmentation,"image_id":image_id,"area":area,"bbox":bbox}
             coco_annotations.append(Anno_descr)
             anno_id_log.append(anno_id)  #also register the anno id in the log
-            
-            
-            
-            
-            
-
-                    
-    
-    
-    
-    print("Finished processing image and annotation files")
-    print("==============================================")
-    
-    print("Creating Coco-styled Database")
+    if verbose:
+        print("Finished processing image and annotation files")
+        print("==============================================")
+        print("Creating Coco-styled Database")
     coco_style_db={"info":coco_info,"licenses":coco_licenses,"images":coco_images,"annotations":coco_annotations,"categories":coco_categories}
     registers=[category_log,category_id_log,anno_id_log,im_id_log]
-    
     return(coco_style_db,registers)
 
 
@@ -389,7 +339,6 @@ def grid_raster_and_annotations_to_coco_v2(src_grid,src_im,src_ann=None,dst_im=N
     grid = geopandas.read_file(src_grid)#Open The Grid shp
     data = rio.open(src_im)# Open the raster tif
     ntiles=len(grid)
-    
     if src_ann:      
         print("==============================================")
         print("Preprocessing Annotation Shapefile")
@@ -545,41 +494,43 @@ def grid_raster_and_annotations_to_coco_v2(src_grid,src_im,src_ann=None,dst_im=N
 
 
 
-
-def grid_raster(src_grid,src_im,dst_im,prefix):
-    grid = geopandas.read_file(src_grid)#Open The Grid shp
-    data = rio.open(src_im)# Open the raster tif
-    ntiles=len(grid)
-    print("Starting to process image and annotation files")
-    print("==============================================")
-    for i in range(0,ntiles): #for every object in grid
-        outfile_im=dst_im+prefix+"Tile"+("{:04d}".format(i))+".tif"
-        outfile_ann=dst_ann+"Tile_%d_Annotation.shp " % i
-        
-        
-        print("Clipping tile" + str(i) + " of "+str(ntiles))
-        print("Target: "+outfile_im)
-        coords=getFeatures(grid,i) #get the polygon
-        Tile, out_transform = mask(dataset=data, shapes=coords, crop=True) #crop the raster to the polygon
-        out_meta = data.meta.copy() #get a copy of the metadata of the raster
-        #out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform,"crs": '+proj=utm +zone=49 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'}) #update the meta for the cropped raster
-        out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform}) #update the meta for the cropped raster
-        #make the dir if necessary
-        if not os.path.exists(dst_im):
-            os.makedirs(dst_im)
-        #write the image
-        with rio.open(outfile_im, "w", **out_meta) as dest:
-                dest.write(Tile) 
-                                         
-        print("Clipping annotation" + str(i)+ "of "+str(ntiles) )
-        print("Target: "+outfile_ann)
-        (xmin,ymin,xmax,ymax)=grid.bounds[i:i+1].iloc[0,:]
-        subprocess.call("ogr2ogr -clipsrc %d %d %d %d "%(xmin,ymin,xmax,ymax) + outfile_ann+" "+src_ann )
-    
-    
-    print("Finished processing image and annotation files")
-    print("==============================================")
-    return(0)
+# =============================================================================
+# 
+# def grid_raster(src_grid,src_im,dst_im,prefix):
+#     grid = geopandas.read_file(src_grid)#Open The Grid shp
+#     data = rio.open(src_im)# Open the raster tif
+#     ntiles=len(grid)
+#     print("Starting to process image and annotation files")
+#     print("==============================================")
+#     for i in range(0,ntiles): #for every object in grid
+#         outfile_im=dst_im+prefix+"Tile"+("{:04d}".format(i))+".tif"
+#         outfile_ann=dst_ann+"Tile_%d_Annotation.shp " % i
+#         
+#         
+#         print("Clipping tile" + str(i) + " of "+str(ntiles))
+#         print("Target: "+outfile_im)
+#         coords=getFeatures(grid,i) #get the polygon
+#         Tile, out_transform = mask(dataset=data, shapes=coords, crop=True) #crop the raster to the polygon
+#         out_meta = data.meta.copy() #get a copy of the metadata of the raster
+#         #out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform,"crs": '+proj=utm +zone=49 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'}) #update the meta for the cropped raster
+#         out_meta.update({"driver": "GTiff","height": Tile.shape[1],"width": Tile.shape[2],"transform": out_transform}) #update the meta for the cropped raster
+#         #make the dir if necessary
+#         if not os.path.exists(dst_im):
+#             os.makedirs(dst_im)
+#         #write the image
+#         with rio.open(outfile_im, "w", **out_meta) as dest:
+#                 dest.write(Tile) 
+#                                          
+#         print("Clipping annotation" + str(i)+ "of "+str(ntiles) )
+#         print("Target: "+outfile_ann)
+#         (xmin,ymin,xmax,ymax)=grid.bounds[i:i+1].iloc[0,:]
+#         subprocess.call("ogr2ogr -clipsrc %d %d %d %d "%(xmin,ymin,xmax,ymax) + outfile_ann+" "+src_ann )
+#     
+#     
+#     print("Finished processing image and annotation files")
+#     print("==============================================")
+#     return(0)
+# =============================================================================
 
 
 
@@ -652,8 +603,9 @@ def prepare_vrt(src_filename,dst_filename,resample_factor=1,OverwriteEPSG=False)
         ds_raster.SetProjection(crs)
         ds_raster=None
         
-def prepare_inputs(src_filename,dst_filename,target_resolution=None,resample_factor=None,reproject_EPSG=False, OverwriteInputEPSG=False):  
-    #resamples an input image and possibly defines projection at the same time
+def prepare_inputs(src_filename,dst_filename,target_resolution=None,resample_factor=None,reproject_EPSG=False, OverwriteInputEPSG=False,verbose=True):  
+    #Function for SegUtils
+    ##resamples an input image and possibly defines projection at the same time
     new_image_file = Path(dst_filename)
     if not new_image_file.exists():
         if target_resolution:
@@ -673,22 +625,27 @@ def prepare_inputs(src_filename,dst_filename,target_resolution=None,resample_fac
             srs.ImportFromEPSG(OverwriteInputEPSG)
             crs=srs.ExportToWkt()
             newcrs=srs.ExportToProj4()
-            print("Setting Projection of Input to CRS: "+newcrs)
+            if verbose: 
+                print("Setting Projection of Input to CRS: "+newcrs)
             s_raster.SetProjection(crs)
             s_raster=None 
         if reproject_EPSG: #reproject if a target EPSG is given
             #get the input epsg (easiest with rasterio) not actually necessary for gdalwarp
             #with rasterio.open(src_filename) as src:
            #     print (src.crs)
-            print("Reprojecting to: ", reproject_EPSG, " and resampling to resolution: ", outres_x ," ",outres_y)
+            if verbose:
+                print("Reprojecting to: ", reproject_EPSG, " and resampling to resolution: ", outres_x ," ",outres_y)
             cmd=("gdalwarp -t_srs "+reproject_EPSG+" -tr "+outres_x+" "+outres_y+" -r bilinear "+'"'+src_filename+'"'+"  "+'"'+dst_filename+'"')
-            print("\n",cmd,"\n")
+            if verbose:
+                print("\n",cmd,"\n")
             return(subprocess.check_output(cmd,shell=True))
             
         else:#else just resample the resolution
-            print("Resampling to resolution:",outres_x ," ",outres_y)  
+            if verbose:
+                print("Resampling to resolution:",outres_x ," ",outres_y)  
             cmd=("gdalwarp -tr "+outres_x+" "+outres_y+" -r bilinear "+'"'+src_filename+'"'+"  "+'"'+dst_filename+'"')
-            print("\n",cmd,"\n")
+            if verbose:
+                print("\n",cmd,"\n")
             cmd=cmd
             #subprocess.Popen("gdalwarp", "-tr ", outres_x,outres_y, "-r bilinear",src_filename, dst_filename)
             return(subprocess.check_output(cmd,shell=True))
@@ -840,7 +797,8 @@ def getFeatures(gdf,index):
     #Function to parse features from GeoDataFrame via json, in such a format that rasterio wants them
     return [json.loads(gdf.to_json())['features'][index]['geometry']]
     
-def Create_Grid_Over(InputRasterfn,outputGridfn,Imagesize_x,Imagesize_y,OL_x,OL_y,Overhang_tolerance_x,Overhang_tolerance_y):  
+def Create_Grid_Over(InputRasterfn,outputGridfn,Imagesize_x,Imagesize_y,OL_x,OL_y,Overhang_tolerance_x,Overhang_tolerance_y,verbose=True):  
+    #Function for SegUtils    
     data = gdal.Open(InputRasterfn, gdalconst.GA_ReadOnly) 
     geo_transform = data.GetGeoTransform()    
     x_min = geo_transform[0]
@@ -852,12 +810,13 @@ def Create_Grid_Over(InputRasterfn,outputGridfn,Imagesize_x,Imagesize_y,OL_x,OL_
     Overlap_x_geo=abs(OL_x*geo_transform[1])
     Overlap_y_geo=abs(OL_y*geo_transform[5])
     SRefWKT=data.GetProjection()
-    print("Creating Grid")
-    print("x_min = ",x_min)
-    print("x_max = ",x_max)
-    print("y_min = ",y_min)
-    print("y_max = ",y_max)
-    print("Tilesize = ",gridWidth," ", gridHeight,"meters")
+    if verbose:
+        print("Creating Grid")
+        print("x_min = ",x_min)
+        print("x_max = ",x_max)
+        print("y_min = ",y_min)
+        print("y_max = ",y_max)
+        print("Tilesize = ",gridWidth," ", gridHeight,"meters")
     Create_Grid(outputGridfn,x_min,x_max,y_min,y_max,gridWidth,gridHeight,Overlap_x_geo,Overlap_y_geo,SRefWKT,Overhang_tolerance_x,Overhang_tolerance_y)
 
 
@@ -1069,7 +1028,7 @@ def inference_procedure(src_filename,dst_filename,dst_pred,inf_model,resample_fa
     SegUtils.inference_on_tif(src_grid= GridPath+"GridX.shp",
             src_im= ProcessedImagesPath+"IMX_resampled.tif",
             dst_im= TilePath,
-            inf_model=model,
+            inf_model=inf_model,
             output_image_tile=False,
             dst_pred=dst_pred
             )
