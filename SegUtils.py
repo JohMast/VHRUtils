@@ -451,7 +451,7 @@ def prepare_inputs(src_filename,dst_filename,target_resolution=None,resample_fac
     else: 
         print("Destination image already exists, skipping.")
 
-def Create_Grid(outputGridfn,xmin,xmax,ymin,ymax,gridHeight,gridWidth,OL_x,OL_y,SRefWKT,Overhang_tolerance_x=0,Overhang_tolerance_y=0,round_row_nr_digits=10,round_col_nr_digits=10):
+def Create_Grid(outputGridfn,xmin,xmax,ymin,ymax,gridHeight,gridWidth,OL_x,OL_y,SRefWKT,Overhang_tolerance_x=0,Overhang_tolerance_y=0,round_row_nr_digits=10,round_col_nr_digits=10,verbose=True):
 
     # convert sys.argv to float
     xmin = float(xmin)
@@ -467,13 +467,15 @@ def Create_Grid(outputGridfn,xmin,xmax,ymin,ymax,gridHeight,gridWidth,OL_x,OL_y,
     # get rows
     rows = floor(round((((ymax-ymin)-OL_y)/(gridHeight-OL_y))+Overhang_tolerance_y,round_row_nr_digits))
     row_overhang=(((ymax-ymin)-OL_y)/(gridHeight-OL_y))
-    print("Optimal number of rows = ", row_overhang)
-    print("Actually creating ",rows," rows")
+    if verbose:
+        print("Optimal number of rows = ", row_overhang)
+        print("Actually creating ",rows," rows")
     # get columns
     col_overhang=(((xmax-xmin)-OL_x)/(gridWidth-OL_x))
     cols = floor(round((((xmax-xmin)-OL_x)/(gridWidth-OL_x))+Overhang_tolerance_x,round_col_nr_digits))
-    print("Optimal number of cols = ", col_overhang)
-    print("Actually creating ",cols," cols")
+    if verbose:
+        print("Optimal number of cols = ", col_overhang)
+        print("Actually creating ",cols," cols")
     # start grid cell envelope
     ringXleftOrigin = xmin
     ringXrightOrigin = xmin + gridWidth
@@ -573,7 +575,7 @@ def Create_Grid_Over(InputRasterfn,outputGridfn,Imagesize_x,Imagesize_y,OL_x,OL_
         print("y_min = ",y_min)
         print("y_max = ",y_max)
         print("Tilesize = ",gridWidth," ", gridHeight,"meters")
-    Create_Grid(outputGridfn,x_min,x_max,y_min,y_max,gridWidth,gridHeight,Overlap_x_geo,Overlap_y_geo,SRefWKT,Overhang_tolerance_x,Overhang_tolerance_y)
+    Create_Grid(outputGridfn,x_min,x_max,y_min,y_max,gridWidth,gridHeight,Overlap_x_geo,Overlap_y_geo,SRefWKT,Overhang_tolerance_x,Overhang_tolerance_y,verbose=verbose)
 
 
 
