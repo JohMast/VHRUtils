@@ -31,7 +31,7 @@ import numpy as np
 import aerialImageRetrieval
 import SegUtils
 
-def download_images_from_bing(bboxes,TempPath,DownloadedPath,verbose=True):
+def download_images_from_bing(bboxes,TempPath,DownloadedPath,API_Key,verbose=True):
 #Function for SegUtils
 ##Attempt to download images from the bing API at zoom level 18, or lower if 8 is not possible
 ##Note: Higher zoom levels than 18 are possible, modify the class variable MAXLEVEL in tilesystem.py
@@ -46,7 +46,7 @@ def download_images_from_bing(bboxes,TempPath,DownloadedPath,verbose=True):
             if verbose:
                 print("Downloading image for BBox: ",quadrant.QUADRANT)
             bbox=quadrant.geometry.bounds
-            imgretrieval=aerialImageRetrieval.AerialImageRetrieval(bbox[1], bbox[0], bbox[3], bbox[2],TempPath)
+            imgretrieval=aerialImageRetrieval.AerialImageRetrieval(bbox[1], bbox[0], bbox[3], bbox[2],TempPath,API_Key)
             if imgretrieval.max_resolution_imagery_retrieval():
                 if verbose:
                     print("Successfully retrieved the image with maximum resolution!")

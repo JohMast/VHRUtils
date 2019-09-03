@@ -15,7 +15,7 @@ Return an aerial imagery (with maximum resolution available) downloaded from Bin
 import sys, io, os
 from urllib import request
 from PIL import Image
-
+import json
 from tilesystem import TileSystem
 
 
@@ -23,22 +23,26 @@ BASEURL = "http://h0.ortho.tiles.virtualearth.net/tiles/h{0}.jpeg?g=131"
 IMAGEMAXSIZE = 8192 * 8192 * 8 # max width/height in pixels for the retrived image
 Image.MAX_IMAGE_PIXELS = None
 TILESIZE = 256              # in Bing tile system, one tile image is in size 256 * 256 pixels
+rest_baseurl="https://dev.virtualearth.net/REST/V1/Imagery/Metadata/Aerial?output=json&key={0}" 
 
 
 class AerialImageRetrieval(object):
     """The class for aerial image retrieval
-
+    
     To create an AerialImageRetrieval object, simply give upper left latitude, longitude,
     and lower right latitude and longitude
     """
-    def __init__(self, lat1, lon1, lat2, lon2, dst_im):
+    
+    def __init__(self, lat1, lon1, lat2, lon2, dst_im,API_Key):
         self.lat1 = lat1
         self.lon1 = lon1
         self.lat2 = lat2
         self.lon2 = lon2
-
+        self.downloaded_tiles = 0
         self.tgtfolder = './output/'
         self.tgtfolder = dst_im
+        self.API_Key=API_Key
+
         try:
             os.makedirs(self.tgtfolder)
         except FileExistsError:
@@ -56,8 +60,21 @@ class AerialImageRetrieval(object):
         Returns:
             [Image] -- [A PIL Image]
         """
-
-        with request.urlopen(BASEURL.format(quadkey)) as file:
+        
+        with request.urlopen(rest_baseurl.format(self.API_Key)) as base_req:
+            raw_data = base_req.read()   
+            encoding = base_req.info().get_content_charset('utf8')  # JSON default
+            data = json.loads(raw_data.decode(encoding))
+            api_url=data["resourceSets"][0]["resources"][0]["imageUrl"]
+            api_url=api_url.replace("{subdomain}","t1") #set subdomain
+            api_url=api_url.replace("a{quadkey}",("a"+"030222231031012100")) #set quadkey
+            api_url=api_url.replace("{culture}","en-US")
+            api_url=api_url.replace("{subdomain}","t1") #set subdomain
+        #print("downloading from url:", api_url)
+        with request.urlopen(api_url) as file:
+            self.downloaded_tiles+=1
+            #print("downloading file: ",file)
+            #print("total downloaded tiles: ", self.downloaded_tiles)
             return Image.open(file)
 
 
@@ -136,6 +153,7 @@ class AerialImageRetrieval(object):
             retrieve_image = result.crop((pixelX1 - leftup_cornerX, pixelY1 - leftup_cornerY, \
                                         pixelX2 - leftup_cornerX, pixelY2 - leftup_cornerY))
             print("Finishing the aerial image retrieval, storing the image aerialImage_{0}.jpeg in folder {1}".format(levl, self.tgtfolder))
+            print("Total downloaded tiles: ", self.downloaded_tiles)
             filename = os.path.join(self.tgtfolder, 'aerialImage_{}.tif'.format(levl))
             retrieve_image.save(filename)
             return True
