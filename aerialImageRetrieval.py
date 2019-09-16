@@ -67,7 +67,7 @@ class AerialImageRetrieval(object):
             data = json.loads(raw_data.decode(encoding))
             api_url=data["resourceSets"][0]["resources"][0]["imageUrl"]
             api_url=api_url.replace("{subdomain}","t1") #set subdomain
-            api_url=api_url.replace("a{quadkey}",("a"+"030222231031012100")) #set quadkey
+            api_url=api_url.replace("a{quadkey}",("a"+str(quadkey))) #set quadkey
             api_url=api_url.replace("{culture}","en-US")
             api_url=api_url.replace("{subdomain}","t1") #set subdomain
         #print("downloading from url:", api_url)
